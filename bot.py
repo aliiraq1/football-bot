@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask
 from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # ================= 1. الإعدادات الأساسية =================
 TOKEN = "8685821581:AAEBPYLDm11al-zz9-szgx9QqkFWA8sKpZY"  # ضع توكن البوت هنا
@@ -16,27 +16,27 @@ CHANNEL_USER = "@Ali1Sports"       # معرف القناة
 BASE_URL = "https://v3.football.api-sports.io"
 headers = {"x-apisports-key": API_KEY}
 
-# الدوريات الكبرى المدعومة
-MAJOR_LEAGUES = {
-    "الدوري الإنجليزي": 39,
-    "الدوري الإسباني": 140,
-    "الدوري الألماني": 78,
-    "الدوري الإيطالي": 135,
-    "الدوري الفرنسي": 61
-}
-LEAGUE_IDS_LIST = list(MAJOR_LEAGUES.values())
+# تحديد الموسم الحالي ديناميكياً (2025/2026)
+CURRENT_SEASON = str(datetime.now().year if datetime.now().month > 6 else datetime.now().year - 1)
 
-# الذاكرة المؤقتة
-user_favorites = {} # {user_id: team_id}
+MAJOR_LEAGUES = {
+    "🏴󠁧󠁢󠁥󠁮󠁧󠁿 الدوري الإنجليزي": 39,
+    "🇪🇸 الدوري الإسباني": 140,
+    "🇩🇪 الدوري الألماني": 78,
+    "🇮🇹 الدوري الإيطالي": 135,
+    "🇫🇷 الدوري الفرنسي": 61
+}
+
+# الذاكرة المؤقتة (تصفّر عند إعادة تشغيل السيرفر)
+user_favorites = {} 
 last_scores = {}
-sent_lineups = set()
 morning_sent = False
 last_checked_day = ""
 
-# ================= 2. خادم Flask (لضمان عمل الاستضافة) =================
+# ================= 2. خادم Flask (لضمان عمل Render) =================
 server = Flask('')
 @server.route('/')
-def home(): return "⚽ Ali1Sports System is Live!"
+def home(): return "⚽ Ali1Sports PRO System is Fully Online!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -49,32 +49,28 @@ def get_detailed_fixtures():
         now_iq = datetime.now(timezone.utc) + timedelta(hours=3)
         today = now_iq.strftime('%Y-%m-%d')
         text = f"📅 **مباريات اليوم ({today})**\n━━━━━━━━━━━━━━\n\n"
-        
         found = False
         for l_name, l_id in MAJOR_LEAGUES.items():
-            r = requests.get(f"{BASE_URL}/fixtures?date={today}&league={l_id}&season=2024", headers=headers, timeout=10).json()
+            r = requests.get(f"{BASE_URL}/fixtures?date={today}&league={l_id}&season={CURRENT_SEASON}", headers=headers, timeout=10).json()
             if r.get("response"):
                 found = True
                 text += f"🏆 **{l_name}**\n"
                 for m in r["response"]:
-                    home = m['teams']['home']['name']
-                    away = m['teams']['away']['name']
+                    home, away = m['teams']['home']['name'], m['teams']['away']['name']
                     utc_dt = datetime.fromisoformat(m['fixture']['date'].replace('Z', '+00:00'))
                     iq_time = (utc_dt + timedelta(hours=3)).strftime('%I:%M %p')
-                    
-                    text += f"🏠 **الأرض:** {home}\n"
-                    text += f"🚌 **الزائر:** {away}\n"
-                    text += f"⏰ **الوقت:** {iq_time}\n"
-                    text += "----------- \n"
+                    text += f"🏠 **الأرض:** {home}\n🚌 **الزائر:** {away}\n⏰ **الوقت:** {iq_time}\n"
+                text += "----------- \n"
         return text if found else "📭 لا توجد مباريات كبرى اليوم."
     except: return "❌ خطأ في جلب المواعيد."
 
 def get_standings(league_id):
     try:
-        r = requests.get(f"{BASE_URL}/standings?league={league_id}&season=2024", headers=headers).json()
-        if not r.get("response"): return "⚠️ لا توجد بيانات حالياً."
+        r = requests.get(f"{BASE_URL}/standings?league={league_id}&season={CURRENT_SEASON}", headers=headers).json()
+        if not r.get("response") or not r["response"][0]["league"].get("standings"):
+            return "⚠️ لا توجد بيانات ترتيب حالياً لهذا الموسم."
         st = r["response"][0]["league"]["standings"][0]
-        text = f"📊 **ترتيب الدوري:**\n\n"
+        text = f"📊 **ترتيب الدوري (أول 10):**\n\n"
         for t in st[:10]:
             text += f"{t['rank']}. {t['team']['name']} - {t['points']}ن\n"
         return text
@@ -82,97 +78,101 @@ def get_standings(league_id):
 
 def get_top_scorers(league_id):
     try:
-        r = requests.get(f"{BASE_URL}/players/topscorers?league={league_id}&season=2024", headers=headers).json()
-        if not r.get("response"): return "⚠️ لا توجد بيانات."
-        text = f"⚽ **قائمة الهدافين:**\n\n"
-        for p in r["response"][:5]:
-            text += f"👤 {p['player']['name']} - ⚽ {p['statistics'][0]['goals']['total']}\n"
+        r = requests.get(f"{BASE_URL}/players/topscorers?league={league_id}&season={CURRENT_SEASON}", headers=headers).json()
+        if not r.get("response"): return "⚠️ لا توجد بيانات هدافين حالياً."
+        text = "⚽ **قائمة الهدافين:**\n\n"
+        for p in r["response"][:7]:
+            name = p['player']['name']
+            goals = p['statistics'][0]['goals']['total']
+            team = p['statistics'][0]['team']['name']
+            text += f"👤 {name} ({team}) - ⚽ {goals}\n"
         return text
-    except: return "❌ خطأ."
+    except: return "❌ خطأ في جلب الهدافين."
 
-def get_live_scores():
+def get_teams_by_league(league_id):
     try:
-        r = requests.get(f"{BASE_URL}/fixtures?live=all", headers=headers).json()
-        if not r.get("response"): return "📭 لا توجد مباريات مباشرة الآن."
-        text = "🏟️ **النتائج الحية:**\n\n"
-        for m in r["response"][:10]:
-            text += f"⚽ {m['teams']['home']['name']} {m['goals']['home']} - {m['goals']['away']} {m['teams']['away']['name']} ({m['fixture']['status']['elapsed']}')\n"
-        return text
-    except: return "❌ خطأ."
+        r = requests.get(f"{BASE_URL}/teams?league={league_id}&season={CURRENT_SEASON}", headers=headers).json()
+        teams = r.get("response", [])
+        keyboard, row = [], []
+        for t in teams:
+            t_name, t_id = t['team']['name'], t['team']['id']
+            row.append(InlineKeyboardButton(t_name, callback_data=f"save_{t_id}_{t_name}"))
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+        if row: keyboard.append(row)
+        return keyboard
+    except: return []
 
-# ================= 4. معالجة التفاعل مع المستخدم (الخاص) =================
+# ================= 4. معالجة التفاعل (الخاص) =================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     fav_name = context.user_data.get('fav_team_name', "لا يوجد")
-    
     keyboard = [
         [InlineKeyboardButton("📅 مواعيد المباريات", callback_data='btn_fixtures')],
         [InlineKeyboardButton("📊 نتائج مباشرة", callback_data='btn_live')],
-        [InlineKeyboardButton("🏆 الترتيب", callback_data='menu_standings'), InlineKeyboardButton("🔥 الهدافين", callback_data='menu_scorers')],
-        [InlineKeyboardButton("⭐ فريقك المفضل", callback_data='btn_fav_setup')],
+        [InlineKeyboardButton("🏆 الترتيب", callback_data='nav_std'), InlineKeyboardButton("🔥 الهدافين", callback_data='nav_scr')],
+        [InlineKeyboardButton("⭐ اختر فريقك المفضل", callback_data='nav_fav')],
     ]
-    
     if user_id in user_favorites:
         keyboard.append([InlineKeyboardButton(f"❌ إلغاء متابعة {fav_name}", callback_data='btn_unfav')])
     
     keyboard.append([InlineKeyboardButton("📢 القناة الرسمية", url=f"https://t.me/{CHANNEL_USER[1:]}")])
+    msg = f"⚽ **Ali1Sports PRO**\n🌟 فريقك الحالي: **{fav_name}**\n\nاختر من القائمة:"
     
-    msg = f"⚽ **مرحباً بك في Ali1Sports**\n🌟 فريقك المفضل: {fav_name}\n\nاختر من القائمة:"
     if update.message: await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     else: await update.callback_query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    data = query.data
     await query.answer()
     
-    if query.data == 'btn_fixtures':
-        await query.edit_message_text(get_detailed_fixtures(), parse_mode="Markdown", reply_markup=back_menu())
-    elif query.data == 'btn_live':
-        await query.edit_message_text(get_live_scores(), parse_mode="Markdown", reply_markup=back_menu())
-    elif query.data == 'menu_standings' or query.data == 'menu_scorers':
-        type_ = "std" if "standings" in query.data else "scr"
-        kb = [[InlineKeyboardButton(name, callback_data=f"{type_}_{id}")] for name, id in MAJOR_LEAGUES.items()]
-        kb.append([InlineKeyboardButton("⬅️ عودة", callback_data='back_main')])
-        await query.edit_message_text("اختر الدوري:", reply_markup=InlineKeyboardMarkup(kb))
+    if data == 'btn_fixtures':
+        await query.edit_message_text(get_detailed_fixtures(), parse_mode="Markdown", reply_markup=back_kb())
     
-    elif query.data.startswith(('std_', 'scr_')):
-        parts = query.data.split('_')
-        res = get_standings(parts[1]) if parts[0] == "std" else get_top_scorers(parts[1])
-        await query.edit_message_text(res, parse_mode="Markdown", reply_markup=back_menu())
+    elif data == 'btn_live':
+        r = requests.get(f"{BASE_URL}/fixtures?live=all", headers=headers).json()
+        res = "🏟️ **النتائج الحية:**\n\n" + "\n".join([f"⚽ {m['teams']['home']['name']} {m['goals']['home']}-{m['goals']['away']} {m['teams']['away']['name']}" for m in r.get("response", [])[:10]])
+        await query.edit_message_text(res if "home" in res else "📭 لا توجد مباريات مباشرة حالياً.", reply_markup=back_kb())
+    
+    elif data in ['nav_std', 'nav_scr', 'nav_fav']:
+        prefix = "getstd_" if data == 'nav_std' else "getscr_" if data == 'nav_scr' else "favl_"
+        kb = [[InlineKeyboardButton(name, callback_data=f"{prefix}{id}")] for name, id in MAJOR_LEAGUES.items()]
+        kb.append([InlineKeyboardButton("⬅️ عودة", callback_data='back_main')])
+        await query.edit_message_text("اختر الدوري المطلوب:", reply_markup=InlineKeyboardMarkup(kb))
+    
+    elif data.startswith('favl_'):
+        l_id = data.split('_')[1]
+        kb = get_teams_by_league(l_id)
+        kb.append([InlineKeyboardButton("⬅️ عودة", callback_data='nav_fav')])
+        await query.edit_message_text("اختر فريقك من القائمة:", reply_markup=InlineKeyboardMarkup(kb))
 
-    elif query.data == 'btn_fav_setup':
-        await query.edit_message_text("📝 أرسل اسم فريقك بالإنجليزية (مثال: Real Madrid):")
-        context.user_data['waiting'] = True
-    elif query.data == 'btn_unfav':
+    elif data.startswith('getstd_'):
+        l_id = data.split('_')[1]
+        await query.edit_message_text(get_standings(l_id), parse_mode="Markdown", reply_markup=back_kb())
+
+    elif data.startswith('getscr_'):
+        l_id = data.split('_')[1]
+        await query.edit_message_text(get_top_scorers(l_id), parse_mode="Markdown", reply_markup=back_kb())
+
+    elif data.startswith('save_'):
+        _, t_id, t_name = data.split('_')
+        user_favorites[query.from_user.id] = int(t_id)
+        context.user_data['fav_team_name'] = t_name
+        await query.edit_message_text(f"✅ تم حفظ **{t_name}** كفريقك المفضل!", reply_markup=back_kb())
+
+    elif data == 'btn_unfav':
         user_favorites.pop(query.from_user.id, None)
         context.user_data['fav_team_name'] = "لا يوجد"
         await start(update, context)
-    elif query.data == 'back_main':
-        await start(update, context)
+    
+    elif data == 'back_main': await start(update, context)
 
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get('waiting'):
-        name = update.message.text
-        r = requests.get(f"{BASE_URL}/teams?search={name}", headers=headers).json()
-        teams = r.get("response", [])
-        if not teams:
-            await update.message.reply_text("❌ لم أجد الفريق، حاول مرة أخرى.")
-            return
-        kb = [[InlineKeyboardButton(t['team']['name'], callback_data=f"save_{t['team']['id']}_{t['team']['name']}")] for t in teams[:5]]
-        await update.message.reply_text("اختر الفريق بدقة:", reply_markup=InlineKeyboardMarkup(kb))
-        context.user_data['waiting'] = False
+def back_kb(): return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data='back_main')]])
 
-async def save_team(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    _, t_id, t_name = query.data.split('_')
-    user_favorites[query.from_user.id] = int(t_id)
-    context.user_data['fav_team_name'] = t_name
-    await query.edit_message_text(f"✅ تم حفظ {t_name} كفريقك المفضل!", reply_markup=back_menu())
-
-def back_menu(): return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data='back_main')]])
-
-# ================= 5. المحرك التلقائي (القناة + التنبيهات الخاصة) =================
+# ================= 5. المحرك التلقائي للقناة والتنبيهات =================
 
 async def main_engine(app):
     global last_scores, morning_sent, last_checked_day
@@ -180,47 +180,37 @@ async def main_engine(app):
         try:
             now_iq = datetime.now(timezone.utc) + timedelta(hours=3)
             today = now_iq.strftime('%Y-%m-%d')
-
-            if today != last_checked_day:
-                morning_sent, last_checked_day = False, today
-                last_scores.clear()
-
-            # إرسال الجدول الساعة 12 ظهراً
+            if today != last_checked_day: morning_sent, last_checked_day = False, today
+            
+            # إرسال جدول الصباح
             if now_iq.hour == 12 and not morning_sent:
                 await app.bot.send_message(chat_id=CHANNEL_USER, text=get_detailed_fixtures(), parse_mode="Markdown")
                 morning_sent = True
 
-            # فحص الأهداف المباشرة
+            # فحص الأهداف
             r = requests.get(f"{BASE_URL}/fixtures?live=all", headers=headers, timeout=10).json()
-            if r.get("response"):
-                for m in r["response"]:
-                    f_id, score = m["fixture"]["id"], f"{m['goals']['home']}-{m['goals']['away']}"
-                    if f_id in last_scores and last_scores[f_id] != score:
-                        # إشعار القناة
-                        goal_text = f"⚽ هدف!! {m['teams']['home']['name']} {score} {m['teams']['away']['name']}"
-                        await app.bot.send_message(chat_id=CHANNEL_USER, text=goal_text)
-                        # إشعار الفريق المفضل
-                        h_id, a_id = m['teams']['home']['id'], m['teams']['away']['id']
-                        for u_id, fav_id in user_favorites.items():
-                            if fav_id in [h_id, a_id]:
-                                await app.bot.send_message(chat_id=u_id, text=f"⭐ فريقك سجل/استقبل هدفاً!\nالنتيجة: {score}")
-                    last_scores[f_id] = score
+            for m in r.get("response", []):
+                f_id, score = m["fixture"]["id"], f"{m['goals']['home']}-{m['goals']['away']}"
+                if f_id in last_scores and last_scores[f_id] != score:
+                    # القناة
+                    await app.bot.send_message(chat_id=CHANNEL_USER, text=f"⚽ هدف!! {m['teams']['home']['name']} {score} {m['teams']['away']['name']}")
+                    # التنبيه الخاص
+                    h_id, a_id = m['teams']['home']['id'], m['teams']['away']['id']
+                    for u_id, fav_id in user_favorites.items():
+                        if fav_id in [h_id, a_id]: await app.bot.send_message(chat_id=u_id, text=f"⭐ فريقك سجل/استقبل هدفاً!\nالنتيجة: {score}")
+                last_scores[f_id] = score
         except: pass
         await asyncio.sleep(60)
 
-# ================= 6. التشغيل النهائي =================
-
+# ================= 6. التشغيل =================
 if __name__ == "__main__":
     Thread(target=run_flask, daemon=True).start()
     bot_app = ApplicationBuilder().token(TOKEN).build()
-    
     bot_app.add_handler(CommandHandler("start", start))
-    bot_app.add_handler(CallbackQueryHandler(callback_handler, pattern='^(btn_|menu_|back_|std_|scr_)'))
-    bot_app.add_handler(CallbackQueryHandler(save_team, pattern='^save_'))
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    bot_app.add_handler(CallbackQueryHandler(callback_handler))
     
     async def setup(application): asyncio.create_task(main_engine(application))
     bot_app.post_init = setup
     
-    print("--- Ali1Sports PRO System is Running Successfully ---")
+    print("--- Ali1Sports PRO System is Running ---")
     bot_app.run_polling(drop_pending_updates=True)
