@@ -161,7 +161,13 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button))
 
 def main():
-    app.job_queue.run_once(lambda _: asyncio.create_task(goal_engine(app)), when=1)
+    def main():
+    loop = asyncio.get_event_loop()
+    loop.create_task(goal_engine(app))
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
     app.run_polling()
 
 if __name__ == "__main__":
