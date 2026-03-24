@@ -7,23 +7,17 @@ TOKEN = "8685821581:AAEBPYLDm11al-zz9-szgx9QqkFWA8sKpZY"
 API_KEY = "a33db71c29eda79b9ec098d2c337d619"
 
 BASE_URL = "https://v3.football.api-sports.io"
-
 headers = {"x-apisports-key": API_KEY}
 
-# 👤 بيانات المستخدمين
-user_data = {}  # {user_id: {"team": str}}
-
-# ⚽ آخر النتائج
+user_data = {}
 last_scores = {}
 
-# =========================
-# 🎛️ القائمة الرئيسية
-# =========================
+# ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🔴 المباريات المباشرة", callback_data="live")],
         [InlineKeyboardButton("🏆 اختيار فريق", callback_data="teams")],
-        [InlineKeyboardButton("📊 ترتيب الدوريات", callback_data="leagues")]
+        [InlineKeyboardButton("📊 الدوريات", callback_data="leagues")]
     ]
 
     await update.message.reply_text(
@@ -31,87 +25,65 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# =========================
-# 🎛️ أزرار التحكم
-# =========================
+# ================= BUTTONS =================
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     user_id = query.message.chat_id
     data = query.data
 
-    # 🔴 Live
+    # LIVE
     if data == "live":
         await query.edit_message_text(get_live())
 
-    # 🏆 اختيار فريق
+    # TEAMS
     elif data == "teams":
         keyboard = [
             [InlineKeyboardButton("🇪🇸 ريال مدريد", callback_data="team_real madrid")],
             [InlineKeyboardButton("🔵 برشلونة", callback_data="team_barcelona")],
             [InlineKeyboardButton("🔴 مانشستر يونايتد", callback_data="team_man united")]
         ]
+
         await query.edit_message_text(
             "اختر فريقك 👇",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    # 📊 الدوريات
-    elif data == "leagues"
-    keyboard = [
+    # LEAGUES
+    elif data == "leagues":
+        keyboard = [
+            [InlineKeyboardButton("🇬🇧 إنجلترا", callback_data="league_39")],
+            [InlineKeyboardButton("🇪🇸 إسبانيا", callback_data="league_140")],
+            [InlineKeyboardButton("🇮🇹 إيطاليا", callback_data="league_135")],
+            [InlineKeyboardButton("🇩🇪 ألمانيا", callback_data="league_78")],
+            [InlineKeyboardButton("🇫🇷 فرنسا", callback_data="league_61")],
 
-        # 🌍 الدوريات الكبرى
-        [InlineKeyboardButton("🇬🇧 إنجلترا", callback_data="league_39")],
-        [InlineKeyboardButton("🇪🇸 إسبانيا", callback_data="league_140")],
-        [InlineKeyboardButton("🇮🇹 إيطاليا", callback_data="league_135")],
-        [InlineKeyboardButton("🇩🇪 ألمانيا", callback_data="league_78")],
-        [InlineKeyboardButton("🇫🇷 فرنسا", callback_data="league_61")],
+            [InlineKeyboardButton("🏆 دوري الأبطال", callback_data="league_2")],
+            [InlineKeyboardButton("🟠 الدوري الأوروبي", callback_data="league_3")],
+            [InlineKeyboardButton("🌍 كأس العالم", callback_data="league_1")],
 
-        # 🏆 بطولات أوروبا
-        [InlineKeyboardButton("🏆 دوري الأبطال", callback_data="league_2")],
-        [InlineKeyboardButton("🟠 الدوري الأوروبي", callback_data="league_3")],
-        [InlineKeyboardButton("🇪🇺 اليورو", callback_data="league_4")],
-        [InlineKeyboardButton("🏳️ تصفيات اليورو", callback_data="league_5")],
-
-        # 🌍 بطولات عالمية
-        [InlineKeyboardButton("🌍 كأس العالم", callback_data="league_1")],
-
-        # 🇮🇶 + عرب
-        [InlineKeyboardButton("🇮🇶 الدوري العراقي", callback_data="league_268")],
-        [InlineKeyboardButton("🇸🇦 السعودية", callback_data="league_307")],
-
-        # 🌎 أخرى
-        [InlineKeyboardButton("🇧🇷 البرازيل", callback_data="league_71")]
-    ]
-
-    await query.edit_message_text(
-        "🏆 اختر البطولة:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-
-
+            [InlineKeyboardButton("🇮🇶 العراق", callback_data="league_268")],
+            [InlineKeyboardButton("🇸🇦 السعودية", callback_data="league_307")]
         ]
+
         await query.edit_message_text(
-            "اختر الدوري 👇",
+            "🏆 اختر البطولة:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    # 🏆 حفظ الفريق
+    # SAVE TEAM
     elif data.startswith("team_"):
         team = data.replace("team_", "")
         user_data[user_id] = {"team": team}
         await query.edit_message_text(f"✅ تم اختيار فريقك: {team}")
 
-    # 📊 عرض ترتيب
+    # STANDINGS
     elif data.startswith("league_"):
         league = data.replace("league_", "")
         await query.edit_message_text(get_standings(league))
 
-# =========================
-# 🔴 Live Scores
-# =========================
+# ================= LIVE =================
 def get_live():
     url = f"{BASE_URL}/fixtures?live=all"
     r = requests.get(url, headers=headers).json()
@@ -119,7 +91,7 @@ def get_live():
     if "response" not in r:
         return "⚠️ لا توجد مباريات حالياً"
 
-    text = "🔴 Live Matches:\n\n"
+    text = "🔴 المباريات المباشرة:\n\n"
 
     for m in r["response"][:8]:
         home = m["teams"]["home"]["name"]
@@ -131,9 +103,7 @@ def get_live():
 
     return text
 
-# =========================
-# 📊 ترتيب الدوري
-# =========================
+# ================= STANDINGS =================
 def get_standings(league):
     url = f"{BASE_URL}/standings?league={league}&season=2024"
     r = requests.get(url, headers=headers).json()
@@ -141,18 +111,16 @@ def get_standings(league):
     try:
         table = r["response"][0]["league"]["standings"][0]
     except:
-        return "⚠️ لا يوجد بيانات"
+        return "⚠️ لا توجد بيانات"
 
-    text = "📊 ترتيب الدوري:\n\n"
+    text = "📊 الترتيب:\n\n"
 
     for t in table[:10]:
-        text += f"{t['rank']}. {t['team']['name']} - {t['points']} نقطة\n"
+        text += f"{t['rank']}. {t['team']['name']} - {t['points']}\n"
 
     return text
 
-# =========================
-# 🔔 مراقبة الأهداف (PRO MAX ENGINE)
-# =========================
+# ================= GOALS ENGINE =================
 async def goal_engine(app):
     global last_scores
 
@@ -161,30 +129,23 @@ async def goal_engine(app):
             url = f"{BASE_URL}/fixtures?live=all"
             r = requests.get(url, headers=headers).json()
 
-            if "response" not in r:
-                await asyncio.sleep(20)
-                continue
-
-            for m in r["response"]:
+            for m in r.get("response", []):
                 match_id = m["fixture"]["id"]
                 score = f"{m['goals']['home']}-{m['goals']['away']}"
 
                 home = m["teams"]["home"]["name"]
                 away = m["teams"]["away"]["name"]
 
-                # تغيير النتيجة = هدف
                 if match_id in last_scores and last_scores[match_id] != score:
 
                     for user_id, data in user_data.items():
-
                         team = data.get("team", "")
 
-                        if team:
-                            if team.lower() in home.lower() or team.lower() in away.lower():
-                                await app.bot.send_message(
-                                    chat_id=user_id,
-                                    text=f"⚽ GOAL!\n{home} {score} {away}"
-                                )
+                        if team.lower() in home.lower() or team.lower() in away.lower():
+                            await app.bot.send_message(
+                                chat_id=user_id,
+                                text=f"⚽ GOAL!\n{home} {score} {away}"
+                            )
 
                 last_scores[match_id] = score
 
@@ -193,9 +154,7 @@ async def goal_engine(app):
 
         await asyncio.sleep(15)
 
-# =========================
-# تشغيل البوت
-# =========================
+# ================= RUN =================
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
