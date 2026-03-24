@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, UTC
 import os
 import requests
 import asyncio
@@ -94,8 +95,8 @@ async def main_engine(app):
     
     while True:
         try:
-            now_iq = datetime.utcnow() + timedelta(hours=3)
-            
+            now_iq = datetime.now(datetime.UTC).replace(tzinfo=None) + timedelta(hours=3)
+                        
             # 1. إرسال جدول المباريات الساعة 12:00 م بتوقيت العراق
             if now_iq.hour == 12 and now_iq.minute == 0 and not morning_sent:
                 await app.bot.send_message(chat_id=CHANNEL_USER, text=get_daily_fixtures(), parse_mode="Markdown")
