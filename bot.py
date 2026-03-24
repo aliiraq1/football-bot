@@ -24,9 +24,9 @@ MAJOR_LEAGUES = {
     "🇫🇷 الدوري الفرنسي": 61
 }
 
-# الذاكرة المؤقتة
-user_favorites = {}
-user_fav_names = {}
+# تخزين بيانات المستخدمين
+user_favorites = {}  # {user_id: team_id}
+user_fav_names = {}  # {user_id: team_name}
 last_scores = {}
 morning_sent_date = ""
 
@@ -43,7 +43,7 @@ def health():
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
-    server.run(host='0.0.0.0', port=port)
+    server.run(host='0.0.0.0', port=port, debug=False)
 
 # ================= 3. دوال جلب البيانات =================
 
@@ -56,9 +56,12 @@ def get_fixtures_today():
         all_matches = []
         for league_name, league_id in MAJOR_LEAGUES.items():
             try:
-                url = f"{BASE_URL}/fixtures"
-                params = {"league": league_id, "season": CURRENT_SEASON, "date": today}
-                r = requests.get(url, headers=headers, params=params, timeout=10)
+                params = {
+                    "league": league_id,
+                    "season": CURRENT_SEASON,
+                    "date": today
+                }
+                r = requests.get(f"{BASE_URL}/fixtures", headers=headers, params=params, timeout=10)
                 data = r.json()
                 
                 if data.get("response"):
@@ -88,15 +91,17 @@ def get_fixtures_today():
         
         return text
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error in get_fixtures_today: {e}")
         return "❌ حدث خطأ في جلب المباريات."
 
 def get_standings(league_id):
     """جلب ترتيب الدوري"""
     try:
-        url = f"{BASE_URL}/standings"
-        params = {"league": league_id, "season": CURRENT_SEASON}
-        r = requests.get(url, headers=headers, params=params, timeout=10)
+        params = {
+            "league": league_id,
+            "season": CURRENT_SEASON
+        }
+        r = requests.get(f"{BASE_URL}/standings", headers=headers, params=params, timeout=10)
         data = r.json()
         
         if not data.get("response"):
@@ -111,15 +116,17 @@ def get_standings(league_id):
         
         return text
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error in get_standings: {e}")
         return "❌ فشل جلب الترتيب."
 
 def get_scorers(league_id):
     """جلب الهدافين"""
     try:
-        url = f"{BASE_URL}/players/topscorers"
-        params = {"league": league_id, "season": CURRENT_SEASON}
-        r = requests.get(url, headers=headers, params=params, timeout=10)
+        params = {
+            "league": league_id,
+            "season": CURRENT_SEASON
+        }
+        r = requests.get(f"{BASE_URL}/players/topscorers", headers=headers, params=params, timeout=10)
         data = r.json()
         
         if not data.get("response"):
@@ -135,15 +142,17 @@ def get_scorers(league_id):
         
         return text
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error in get_scorers: {e}")
         return "❌ فشل جلب الهدافين."
 
 def get_teams_kb(league_id):
     """جلب قائمة الفرق"""
     try:
-        url = f"{BASE_URL}/teams"
-        params = {"league": league_id, "season": CURRENT_SEASON}
-        r = requests.get(url, headers=headers, params=params, timeout=10)
+        params = {
+            "league": league_id,
+            "season": CURRENT_SEASON
+        }
+        r = requests.get(f"{BASE_URL}/teams", headers=headers, params=params, timeout=10)
         data = r.json()
         
         teams = data.get("response", [])
@@ -166,15 +175,14 @@ def get_teams_kb(league_id):
         
         return keyboard
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error in get_teams_kb: {e}")
         return None
 
 def get_live_scores():
     """جلب النتائج المباشرة"""
     try:
-        url = f"{BASE_URL}/fixtures"
         params = {"live": "all"}
-        r = requests.get(url, headers=headers, params=params, timeout=10)
+        r = requests.get(f"{BASE_URL}/fixtures", headers=headers, params=params, timeout=10)
         data = r.json()
         
         matches = data.get("response", [])
@@ -195,7 +203,7 @@ def get_live_scores():
         
         return text
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error in get_live_scores: {e}")
         return "❌ خطأ في جلب النتائج."
 
 # ================= 4. أوامر البوت =================
@@ -329,33 +337,44 @@ async def auto_engine(app):
                     print(f"Error: {e}")
             
             # مراقبة الأهداف
-            url = f"{BASE_URL}/fixtures"
             params = {"live": "all"}
-            r = requests.get(url, headers=headers, params=params, timeout=10)
+            r = requests.get(f"{BASE_URL}/fixtures", headers=headers, params=params, timeout=10)
             live_matches = r.json().get("response", [])
             
             for match in live_matches:
                 match_id = match["fixture"]["id"]
-                home_score = match['goals']['home'] or 0
-                away_score = match['goals']['away'] or 0
+                home_score = match['goals']['home'] if match['goals']['home'] is not None else 0
+                away_score = match['goals']['away'] if match['goals']['away'] is not None else 0
                 current_score = f"{home_score}-{away_score}"
                 
                 if match_id in last_scores and last_scores[match_id] != current_score:
                     # إرسال للقناة
-                    await app.bot.send_message(
-                        chat_id=CHANNEL_USER,
-                        text=f"⚽ **تحديث النتيجة**\n\n{match['teams']['home']['name']} {current_score} {match['teams']['away']['name']}"
-                    )
+                    try:
+                        await app.bot.send_message(
+                            chat_id=CHANNEL_USER,
+                            text=f"⚽ **تحديث النتيجة**\n\n{match['teams']['home']['name']} {current_score} {match['teams']['away']['name']}"
+                        )
+                    except:
+                        pass
                     
                     # إرسال للمشتركين
                     for user_id, fav_id in user_favorites.items():
                         if fav_id in [match['teams']['home']['id'], match['teams']['away']['id']]:
-                            await app.bot.send_message(
-                                chat_id=user_id,
-                                text=f"⭐ **هدف لفريقك المفضل!**\n\n{match['teams']['home']['name']} {current_score} {match['teams']['away']['name']}"
-                            )
+                            try:
+                                await app.bot.send_message(
+                                    chat_id=user_id,
+                                    text=f"⭐ **هدف لفريقك المفضل!**\n\n{match['teams']['home']['name']} {current_score} {match['teams']['away']['name']}"
+                                )
+                            except:
+                                pass
                 
                 last_scores[match_id] = current_score
+            
+            # تنظيف المباريات المنتهية
+            current_ids = [m["fixture"]["id"] for m in live_matches]
+            for old_id in list(last_scores.keys()):
+                if old_id not in current_ids:
+                    del last_scores[old_id]
             
             await asyncio.sleep(60)
             
@@ -365,20 +384,34 @@ async def auto_engine(app):
 
 # ================= 6. التشغيل =================
 
-if __name__ == "__main__":
-    # تشغيل Flask
-    Thread(target=run_flask, daemon=True).start()
+async def main():
+    """الوظيفة الرئيسية للتشغيل"""
+    # تشغيل Flask في thread منفصل
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
     
-    # إعداد البوت - التغيير الرئيسي هنا
+    # إعداد البوت
     application = Application.builder().token(TOKEN).build()
     
+    # إضافة المعالجات
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(callback_handler))
     
-    async def post_init(application):
-        asyncio.create_task(auto_engine(application))
-    
-    application.post_init = post_init
+    # تشغيل المحرك التلقائي في الخلفية
+    asyncio.create_task(auto_engine(application))
     
     print("🚀 Ali1Sports PRO Bot is Running!")
-    application.run_polling(drop_pending_updates=True)
+    print(f"✅ Bot Token: {TOKEN[:10]}...")
+    print(f"✅ Channel: {CHANNEL_USER}")
+    print(f"✅ Major Leagues: {len(MAJOR_LEAGUES)}")
+    
+    # بدء البوت
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    
+    # الحفاظ على التشغيل
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    asyncio.run(main())
