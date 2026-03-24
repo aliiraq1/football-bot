@@ -160,8 +160,9 @@ app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button))
 
-async def main():
-    asyncio.create_task(goal_engine(app))
-    await app.run_polling()
+def main():
+    app.job_queue.run_once(lambda _: asyncio.create_task(goal_engine(app)), when=1)
+    app.run_polling()
 
-asyncio.run(main())
+if __name__ == "__main__":
+    main()
