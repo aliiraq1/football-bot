@@ -9,8 +9,8 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # ================= الإعدادات الأساسية =================
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-API_KEY = "YOUR_API_FOOTBALL_KEY"
+TOKEN = "8685821581:AAEBPYLDm11al-zz9-szgx9QqkFWA8sKpZY"
+API_KEY = "a33db71c29eda79b9ec098d2c337d619"
 CHANNEL_USER = "@Ali1Sports" 
 
 BASE_URL = "https://v3.football.api-sports.io"
