@@ -178,19 +178,26 @@ async def goal_engine(app):
             pass
         await asyncio.sleep(45)
 
-# ================= التشغيل الرئيسي =================
+# --- التشغيل النهائي المحدث ---
 if __name__ == "__main__":
-    # تشغيل Flask
-    Thread(target=run_flask).start()
-    
-    # بناء التطبيق
+    # 1. تشغيل خادم Flask في خلفية منفصلة
+    Thread(target=run_flask, daemon=True).start()
+
+    # 2. بناء تطبيق التلجرام
     bot_app = ApplicationBuilder().token(TOKEN).build()
+    
+    # 3. إضافة الأوامر
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CallbackQueryHandler(button_handler))
+
+    # 4. تشغيل محرك الأهداف (الطريقة الصحيحة للإصدارات الحديثة)
+    async def setup_engine(application):
+        asyncio.create_task(goal_engine(application))
+
+    # ربط المحرك ليعمل بمجرد تشغيل البوت
+    bot_app.post_init = setup_engine
+
+    print("--- Bot is Starting... Check Telegram! ---")
     
-    # تشغيل محرك الأهداف
-    loop = asyncio.get_event_loop()
-    loop.create_task(goal_engine(bot_app))
-    
-    print("--- Bot Started Successfully ---")
-    bot_app.run_polling()
+    # 5. تشغيل البوت
+    bot_app.run_polling(drop_pending_updates=True)
