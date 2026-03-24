@@ -57,7 +57,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     # 📊 الدوريات
-   elif data == "leagues":
+    elif data == "leagues"
     keyboard = [
 
         # 🌍 الدوريات الكبرى
